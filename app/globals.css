@@ -307,3 +307,133 @@ label input:focus, label textarea:focus { outline: 2px solid var(--accent-soft);
   font-size: 16px;
   background: white;
 }
+
+.todo-label { flex: 1; min-width: 0; }
+.todo-text { flex: 1; cursor: pointer; padding: 2px 0; }
+.todo-text:active { color: var(--accent); }
+select.field {
+  display: block; width: 100%; margin-top: 4px;
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px;
+  font: inherit; font-size: 16px; background: white; color: var(--ink);
+}
+label.check-row { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 15px; }
+label.check-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.hint-line { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
+
+/* ✏️ 수정 버튼 (박스 오른쪽 위) */
+.edit-btn {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: #faf9f6;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.edit-btn:active { background: var(--accent-soft); border-color: var(--accent); }
+.card-top { align-items: flex-start; }
+.card-tools { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.card-tools input { margin: 0; }
+.info-card .card-top { display: flex; justify-content: space-between; gap: 8px; }
+.info-card .card-top h3 { margin-top: 6px; }
+.todos li { align-items: flex-start; gap: 4px; padding: 6px 6px 6px 12px; }
+.todos li .todo-label { padding: 6px 0; align-items: flex-start; }
+.todos li .todo-label input { margin-top: 2px; }
+.todos li .icon-btn.small { height: 32px; }
+
+/* ⋮ 메뉴 */
+.more { position: relative; display: inline-flex; flex: 0 0 auto; }
+.more-btn, .grip {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.more-btn:active, .more-btn[aria-expanded="true"] { background: var(--line); color: var(--ink); }
+.more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  min-width: 120px;
+  z-index: 30;
+}
+.more-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 15px;
+  color: var(--ink);
+}
+.more-menu button:active { background: var(--bg); }
+.card-tools { gap: 2px; }
+.info-card .card-top h3 { margin: 6px 0 8px; }
+
+/* 체크리스트 수정 모드 */
+.board-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.board-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-top: 8px; }
+.mode-btn {
+  border: 1px solid var(--accent);
+  background: white;
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.mode-btn.on { background: var(--accent); color: white; }
+.row-tools { display: flex; align-items: center; flex: 0 0 auto; }
+.grip { touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.todos li { min-height: 46px; }
+.todos li.placeholder { opacity: 0.35; border-style: dashed; border-color: var(--accent); }
+.drop-empty {
+  justify-content: center !important;
+  color: var(--muted);
+  font-size: 13px;
+  border-style: dashed !important;
+  background: transparent !important;
+}
+.board.dragging { user-select: none; -webkit-user-select: none; }
+.drag-ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  transform: rotate(1deg) scale(1.02);
+  font-size: 15px;
+}
+.drag-ghost span:nth-child(2) { flex: 1; }
+.drag-ghost input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.drag-ghost .grip { color: var(--accent); }
+.todo-text { cursor: default; }
+
+/* 메뉴가 열린 박스를 맨 위로 (아래 박스에 가려지지 않게) */
+.card:active { transform: none; }
+.item:has(.more-menu),
+.info-card:has(.more-menu),
+.todos li:has(.more-menu) { position: relative; z-index: 20; }
+.item:has(.more-menu) .card,
+.item.done:has(.more-menu) .card { opacity: 1; }

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { INITIAL_TRIP, INITIAL_PACKING, PACKING_GROUPS } from "./initialTrip";
+import ChecklistBoard from "./ChecklistBoard";
+import MoreMenu from "./MoreMenu";
 
 const LOCAL_KEY = "trip-planner:local";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -78,14 +80,48 @@ export default function Page() {
   const [todoText, setTodoText] = useState("");
   const [packText, setPackText] = useState("");
   const [packGroup, setPackGroup] = useState(PACKING_GROUPS[0]);
+  const [listEdit, setListEdit] = useState(null); // { list: "checklist" | "packing", item }
   const saveTimer = useRef(null);
   const dirty = useRef(false);
+  const pending = useRef(null);
+  const modeRef = useRef("loading");
+  modeRef.current = mode;
+
+  // 저장 대기 중에 앱을 닫거나 다른 앱으로 넘어가도 바로 저장
+  useEffect(() => {
+    const flush = () => {
+      const data = pending.current;
+      if (!data) return;
+      clearTimeout(saveTimer.current);
+      pending.current = null;
+      if (modeRef.current === "local") {
+        try {
+          localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+        } catch {}
+      } else {
+        fetch("/api/trip", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+          keepalive: true,
+        }).catch(() => {});
+      }
+      dirty.current = false;
+    };
+    const onVis = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   const load = useCallback(async (silent = false) => {
     if (dirty.current) return;
     try {
       const res = await fetch("/api/trip", { cache: "no-store" });
-      if (res.status === 503) throw new Error("not-configured");
+      if (!res.ok) throw new Error("not-configured");
       const data = await res.json();
       setMode("cloud");
       setTrip((prev) => {
@@ -126,10 +162,12 @@ export default function Page() {
     dirty.current = true;
     setStatus("저장 중…");
     clearTimeout(saveTimer.current);
+    pending.current = next;
     saveTimer.current = setTimeout(() => persist(next), 700);
   };
 
   const persist = async (data) => {
+    if (pending.current === data) pending.current = null;
     if (mode === "local") {
       try {
         localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
@@ -196,6 +234,15 @@ export default function Page() {
     setEditing(null);
   };
 
+  const deleteInfo = (id) => {
+    if (!confirm("이 카드를 삭제할까요?")) return;
+    update((t) => {
+      t.info = (t.info || []).filter((x) => x.id !== id);
+      return t;
+    });
+    setInfoEdit(null);
+  };
+
   const toggleDone = (id) => {
     update((t) => {
       const it = t.days[safeIdx].items.find((x) => x.id === id);
@@ -259,101 +306,55 @@ export default function Page() {
       </div>
 
       {view === "pack" && (
-        <section>
-          <div className="progress">
-            <div style={{ width: packing.length ? `${(packDone / packing.length) * 100}%` : 0 }} />
-          </div>
-          <div className="pack-head">
-            <p className="sub">챙긴 준비물 {packDone}/{packing.length}</p>
-            {packDone > 0 && (
-              <button
-                className="link"
-                onClick={() => {
-                  if (!confirm("체크 표시를 모두 해제할까요? (돌아올 때 짐 쌀 때 유용해요)")) return;
-                  update((t) => {
-                    t.packing.forEach((p) => (p.done = false));
-                    return t;
-                  });
-                }}
-              >
-                체크 모두 해제
-              </button>
-            )}
-          </div>
-          {packGroups.map((g) => {
-            const list = packing.filter((p) => p.group === g);
-            const d = list.filter((p) => p.done).length;
-            return (
-              <div key={g} className="pack-group">
-                <h3>
-                  {g} <small className={d === list.length ? "all" : ""}>{d}/{list.length}</small>
-                </h3>
-                <ul className="todos">
-                  {list.map((c) => (
-                    <li key={c.id} className={c.done ? "done" : ""}>
-                      <label className="todo-label">
-                        <input
-                          type="checkbox"
-                          checked={c.done}
-                          onChange={() =>
-                            update((t) => {
-                              const x = t.packing.find((y) => y.id === c.id);
-                              x.done = !x.done;
-                              return t;
-                            })
-                          }
-                        />
-                        <span>{c.text}</span>
-                      </label>
-                      <button
-                        className="icon-btn small"
-                        aria-label="삭제"
-                        onClick={() =>
-                          update((t) => {
-                            t.packing = t.packing.filter((y) => y.id !== c.id);
-                            return t;
-                          })
-                        }
-                      >
-                        ✕
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-          <form
-            className="pack-add"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const text = packText.trim();
-              if (!text) return;
-              update((t) => {
-                t.packing = [...(t.packing || []), { id: uid(), group: packGroup, text, done: false }];
-                return t;
-              });
-              setPackText("");
-            }}
-          >
-            <select value={packGroup} onChange={(e) => setPackGroup(e.target.value)}>
-              {PACKING_GROUPS.map((g) => (
-                <option key={g}>{g}</option>
-              ))}
-            </select>
-            <div className="todo-add">
-              <input value={packText} onChange={(e) => setPackText(e.target.value)} placeholder="준비물 추가" />
-              <button className="btn primary">추가</button>
-            </div>
-          </form>
-        </section>
+        <ChecklistBoard
+          items={packing}
+          groups={PACKING_GROUPS}
+          progressLabel="챙긴 준비물"
+          addPlaceholder="준비물 추가"
+          onToggle={(id) =>
+            update((t) => {
+              const x = t.packing.find((y) => y.id === id);
+              if (x) x.done = !x.done;
+              return t;
+            })
+          }
+          onEdit={(item) => setListEdit({ list: "packing", item })}
+          onDelete={(id) =>
+            update((t) => {
+              t.packing = t.packing.filter((y) => y.id !== id);
+              return t;
+            })
+          }
+          onReorder={(next) =>
+            update((t) => {
+              t.packing = next;
+              return t;
+            })
+          }
+          onAdd={(text, group) =>
+            update((t) => {
+              t.packing = [...(t.packing || []), { id: uid(), group, text, done: false }];
+              return t;
+            })
+          }
+          onUncheckAll={() => {
+            if (!confirm("체크 표시를 모두 해제할까요? (돌아올 때 짐 쌀 때 유용해요)")) return;
+            update((t) => {
+              t.packing.forEach((p) => (p.done = false));
+              return t;
+            });
+          }}
+        />
       )}
 
       {view === "info" && (
         <section>
           {info.map((c) => (
             <div key={c.id} className="info-card" onClick={() => setInfoEdit(c)}>
-              <h3>{c.title}</h3>
+              <div className="card-top">
+                <h3>{c.title}</h3>
+                <MoreMenu onEdit={() => setInfoEdit(c)} onDelete={() => deleteInfo(c.id)} />
+              </div>
               <p>
                 <Linkify text={c.body} />
               </p>
@@ -366,60 +367,38 @@ export default function Page() {
       )}
 
       {view === "todo" && (
-        <section>
-          <div className="progress">
-            <div style={{ width: checklist.length ? `${(doneCount / checklist.length) * 100}%` : 0 }} />
-          </div>
-          <p className="sub">준비 진행률 {doneCount}/{checklist.length}</p>
-          <ul className="todos">
-            {checklist.map((c) => (
-              <li key={c.id} className={c.done ? "done" : ""}>
-                <label className="todo-label">
-                  <input
-                    type="checkbox"
-                    checked={c.done}
-                    onChange={() =>
-                      update((t) => {
-                        const x = t.checklist.find((y) => y.id === c.id);
-                        x.done = !x.done;
-                        return t;
-                      })
-                    }
-                  />
-                  <span>{c.text}</span>
-                </label>
-                <button
-                  className="icon-btn small"
-                  aria-label="삭제"
-                  onClick={() =>
-                    update((t) => {
-                      t.checklist = t.checklist.filter((y) => y.id !== c.id);
-                      return t;
-                    })
-                  }
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-          <form
-            className="todo-add"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const text = todoText.trim();
-              if (!text) return;
-              update((t) => {
-                t.checklist = [...(t.checklist || []), { id: uid(), text, done: false }];
-                return t;
-              });
-              setTodoText("");
-            }}
-          >
-            <input value={todoText} onChange={(e) => setTodoText(e.target.value)} placeholder="할 일 추가 (예: 아기 기저귀 챙기기)" />
-            <button className="btn primary">추가</button>
-          </form>
-        </section>
+        <ChecklistBoard
+          items={checklist}
+          groups={null}
+          progressLabel="준비 진행률"
+          addPlaceholder="할 일 추가 (예: 아기 기저귀 챙기기)"
+          onToggle={(id) =>
+            update((t) => {
+              const x = t.checklist.find((y) => y.id === id);
+              if (x) x.done = !x.done;
+              return t;
+            })
+          }
+          onEdit={(item) => setListEdit({ list: "checklist", item })}
+          onDelete={(id) =>
+            update((t) => {
+              t.checklist = t.checklist.filter((y) => y.id !== id);
+              return t;
+            })
+          }
+          onReorder={(next) =>
+            update((t) => {
+              t.checklist = next;
+              return t;
+            })
+          }
+          onAdd={(text, group) =>
+            update((t) => {
+              t.checklist = [...(t.checklist || []), { id: uid(), text, done: false }];
+              return t;
+            })
+          }
+        />
       )}
 
       {view === "plan" && (
@@ -471,13 +450,16 @@ export default function Page() {
                 <div className="card" onClick={() => setEditing({ item: it })}>
                   <div className="card-top">
                     <strong>{it.title || "(제목 없음)"}</strong>
-                    <input
-                      type="checkbox"
-                      checked={!!it.done}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => toggleDone(it.id)}
-                      aria-label="완료"
-                    />
+                    <span className="card-tools">
+                      <input
+                        type="checkbox"
+                        checked={!!it.done}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleDone(it.id)}
+                        aria-label="완료"
+                      />
+                      <MoreMenu onEdit={() => setEditing({ item: it })} onDelete={() => deleteItem(it.id)} />
+                    </span>
                   </div>
                   {it.place && (
                     <a
@@ -529,6 +511,32 @@ export default function Page() {
         />
       )}
 
+      {listEdit && (
+        <ListItemSheet
+          initial={listEdit.item}
+          groups={listEdit.list === "packing" ? PACKING_GROUPS : null}
+          title={listEdit.list === "packing" ? "준비물 수정" : "할 일 수정"}
+          onClose={() => setListEdit(null)}
+          onSave={(item) => {
+            if (!item.text.trim()) return alert("내용을 입력해 주세요.");
+            update((t) => {
+              const arr = t[listEdit.list];
+              const i = arr.findIndex((x) => x.id === item.id);
+              if (i >= 0) arr[i] = { ...item, text: item.text.trim() };
+              return t;
+            });
+            setListEdit(null);
+          }}
+          onDelete={() => {
+            update((t) => {
+              t[listEdit.list] = t[listEdit.list].filter((x) => x.id !== listEdit.item.id);
+              return t;
+            });
+            setListEdit(null);
+          }}
+        />
+      )}
+
       {infoEdit && (
         <InfoSheet
           initial={infoEdit}
@@ -544,14 +552,7 @@ export default function Page() {
             });
             setInfoEdit(null);
           }}
-          onDelete={() => {
-            if (!confirm("이 카드를 삭제할까요?")) return;
-            update((t) => {
-              t.info = (t.info || []).filter((x) => x.id !== infoEdit.id);
-              return t;
-            });
-            setInfoEdit(null);
-          }}
+          onDelete={() => deleteInfo(infoEdit.id)}
         />
       )}
 
@@ -654,6 +655,45 @@ function ItemSheet({ initial, isNew, onClose, onSave, onDelete }) {
           저장
         </button>
       </div>
+    </Sheet>
+  );
+}
+
+function ListItemSheet({ initial, groups, title, onClose, onSave, onDelete }) {
+  const [f, setF] = useState(initial);
+  return (
+    <Sheet title={title} onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave(f);
+        }}
+      >
+        <label>
+          내용
+          <input value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} autoFocus />
+        </label>
+        {groups && (
+          <label>
+            분류
+            <select className="field" value={f.group} onChange={(e) => setF({ ...f, group: e.target.value })}>
+              {[...new Set([...groups, f.group])].map((g) => (
+                <option key={g}>{g}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="check-row">
+          <input type="checkbox" checked={!!f.done} onChange={(e) => setF({ ...f, done: e.target.checked })} />
+          {groups ? "챙김" : "완료"}
+        </label>
+        <div className="actions">
+          <button type="button" className="btn ghost danger" onClick={onDelete}>
+            삭제
+          </button>
+          <button className="btn primary">저장</button>
+        </div>
+      </form>
     </Sheet>
   );
 }
