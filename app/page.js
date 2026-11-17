@@ -29,13 +29,20 @@ function newTrip() {
 }
 
 // 준비물 목록이 생기기 전에 저장된 데이터에는 기본 준비물을 채워 넣어요.
+const UNSORTED = "미분류";
+
 function withPacking(t) {
-  if (t && !Array.isArray(t.packing)) return { ...t, packing: structuredClone(INITIAL_PACKING) };
-  return t;
+  if (!t) return t;
+  let next = t;
+  if (!Array.isArray(next.packing)) next = { ...next, packing: structuredClone(INITIAL_PACKING) };
+  if (!Array.isArray(next.packingGroups)) {
+    next = { ...next, packingGroups: [...new Set([...PACKING_GROUPS, ...next.packing.map((p) => p.group).filter(Boolean)])] };
+  }
+  return next;
 }
 
 function emptyTrip() {
-  return { title: "우리 여행", startDate: todayStr(), days: [{ id: uid(), note: "", items: [] }], info: [], checklist: [], packing: [] };
+  return { title: "우리 여행", startDate: todayStr(), days: [{ id: uid(), note: "", items: [] }], info: [], checklist: [], packing: [], packingGroups: [] };
 }
 
 function Linkify({ text }) {
@@ -80,7 +87,15 @@ export default function Page() {
   const [todoText, setTodoText] = useState("");
   const [packText, setPackText] = useState("");
   const [packGroup, setPackGroup] = useState(PACKING_GROUPS[0]);
-  const [listEdit, setListEdit] = useState(null); // { list: "checklist" | "packing", item }
+  const [listEdit, setListEdit] = useState(null);
+  const [groupEdit, setGroupEdit] = useState(null); // { mode: "add" | "rename", old, name }
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleExpand = (id) =>
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    }); // { list: "checklist" | "packing", item }
   const saveTimer = useRef(null);
   const dirty = useRef(false);
   const pending = useRef(null);
@@ -205,6 +220,7 @@ export default function Page() {
   const doneCount = checklist.filter((c) => c.done).length;
   const packing = trip.packing || [];
   const packDone = packing.filter((c) => c.done).length;
+  const packingGroups = trip.packingGroups || PACKING_GROUPS;
   const packGroups = [...new Set([...PACKING_GROUPS, ...packing.map((p) => p.group)])].filter((g) =>
     packing.some((p) => p.group === g)
   );
@@ -308,8 +324,31 @@ export default function Page() {
       {view === "pack" && (
         <ChecklistBoard
           items={packing}
-          groups={PACKING_GROUPS}
+          groups={packingGroups}
           progressLabel="챙긴 준비물"
+          onGroupAdd={() => setGroupEdit({ mode: "add", name: "" })}
+          onGroupEdit={(g) => setGroupEdit({ mode: "rename", old: g, name: g })}
+          onGroupDelete={(g) => {
+            const n = packing.filter((p) => p.group === g).length;
+            if (g === UNSORTED && n > 0) {
+              alert(`'${UNSORTED}'에 준비물이 남아 있어요. 다른 분류로 옮긴 뒤 삭제해 주세요.`);
+              return;
+            }
+            const msg = n
+              ? `'${g}' 분류를 삭제할까요?\n안에 있는 준비물 ${n}개는 '${UNSORTED}'로 옮겨져요.`
+              : `'${g}' 분류를 삭제할까요?`;
+            if (!confirm(msg)) return;
+            update((t) => {
+              t.packingGroups = (t.packingGroups || []).filter((x) => x !== g);
+              if (n) {
+                t.packing.forEach((p) => {
+                  if (p.group === g) p.group = UNSORTED;
+                });
+                if (!t.packingGroups.includes(UNSORTED)) t.packingGroups.push(UNSORTED);
+              }
+              return t;
+            });
+          }}
           addPlaceholder="준비물 추가"
           onToggle={(id) =>
             update((t) => {
@@ -333,7 +372,10 @@ export default function Page() {
           }
           onAdd={(text, group) =>
             update((t) => {
-              t.packing = [...(t.packing || []), { id: uid(), group, text, done: false }];
+              const g = group || UNSORTED;
+              t.packingGroups = t.packingGroups || [];
+              if (!t.packingGroups.includes(g)) t.packingGroups.push(g);
+              t.packing = [...(t.packing || []), { id: uid(), group: g, text, done: false }];
               return t;
             })
           }
@@ -443,43 +485,42 @@ export default function Page() {
         <ol className="timeline">
           {items.map((it) => {
             const c = catOf(it.category);
+            const hasDetail = !!(it.place || it.memo || it.cost || it.link);
+            const open = expanded.has(it.id);
             return (
-              <li key={it.id} className={it.done ? "item done" : "item"}>
+              <li key={it.id} className="item">
                 <div className="time">{it.time || "—"}</div>
                 <div className="dot">{c.icon}</div>
-                <div className="card" onClick={() => setEditing({ item: it })}>
+                <div
+                  className={open ? "card open" : "card"}
+                  onClick={() => hasDetail && toggleExpand(it.id)}
+                  role={hasDetail ? "button" : undefined}
+                  aria-expanded={hasDetail ? open : undefined}
+                >
                   <div className="card-top">
                     <strong>{it.title || "(제목 없음)"}</strong>
                     <span className="card-tools">
-                      <input
-                        type="checkbox"
-                        checked={!!it.done}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => toggleDone(it.id)}
-                        aria-label="완료"
-                      />
+                      {hasDetail && <span className="chev" aria-hidden="true">⌄</span>}
                       <MoreMenu onEdit={() => setEditing({ item: it })} onDelete={() => deleteItem(it.id)} />
                     </span>
                   </div>
-                  {it.place && (
-                    <a
-                      className="place"
-                      href={mapUrl(it.place)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      🗺️ {it.place}
-                    </a>
-                  )}
-                  {it.memo && <p className="memo">{it.memo}</p>}
-                  {(it.cost || it.link) && (
-                    <div className="meta">
-                      {it.cost && <span>💰 {it.cost}</span>}
-                      {it.link && (
-                        <a href={it.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-                          🔗 링크
+                  {open && (
+                    <div className="detail">
+                      {it.place && (
+                        <a className="place" href={mapUrl(it.place)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                          🗺️ {it.place}
                         </a>
+                      )}
+                      {it.memo && <p className="memo">{it.memo}</p>}
+                      {(it.cost || it.link) && (
+                        <div className="meta">
+                          {it.cost && <span>💰 {it.cost}</span>}
+                          {it.link && (
+                            <a href={it.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                              🔗 링크
+                            </a>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
@@ -514,7 +555,7 @@ export default function Page() {
       {listEdit && (
         <ListItemSheet
           initial={listEdit.item}
-          groups={listEdit.list === "packing" ? PACKING_GROUPS : null}
+          groups={listEdit.list === "packing" ? packingGroups : null}
           title={listEdit.list === "packing" ? "준비물 수정" : "할 일 수정"}
           onClose={() => setListEdit(null)}
           onSave={(item) => {
@@ -553,6 +594,32 @@ export default function Page() {
             setInfoEdit(null);
           }}
           onDelete={() => deleteInfo(infoEdit.id)}
+        />
+      )}
+
+      {groupEdit && (
+        <GroupSheet
+          initial={groupEdit}
+          onClose={() => setGroupEdit(null)}
+          onSave={(name) => {
+            const n = name.trim();
+            if (!n) return alert("분류 이름을 입력해 주세요.");
+            if (n !== groupEdit.old && packingGroups.includes(n)) return alert("이미 있는 분류 이름이에요.");
+            update((t) => {
+              t.packingGroups = t.packingGroups || [];
+              if (groupEdit.mode === "add") {
+                t.packingGroups.push(n);
+              } else {
+                t.packingGroups = t.packingGroups.map((x) => (x === groupEdit.old ? n : x));
+                if (!t.packingGroups.includes(n)) t.packingGroups.push(n);
+                t.packing.forEach((p) => {
+                  if (p.group === groupEdit.old) p.group = n;
+                });
+              }
+              return t;
+            });
+            setGroupEdit(null);
+          }}
         />
       )}
 
@@ -720,6 +787,29 @@ function InfoSheet({ initial, onClose, onSave, onDelete }) {
           저장
         </button>
       </div>
+    </Sheet>
+  );
+}
+
+function GroupSheet({ initial, onClose, onSave }) {
+  const [name, setName] = useState(initial.name);
+  return (
+    <Sheet title={initial.mode === "add" ? "분류 추가" : "분류 이름 수정"} onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave(name);
+        }}
+      >
+        <label>
+          분류 이름
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 🏖️ 물놀이" autoFocus />
+        </label>
+        <p className="hint">이모지를 앞에 붙이면 보기 좋아요.</p>
+        <div className="actions">
+          <button className="btn primary">저장</button>
+        </div>
+      </form>
     </Sheet>
   );
 }

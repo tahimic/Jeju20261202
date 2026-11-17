@@ -163,6 +163,7 @@ export const INITIAL_TRIP = {
     },
   ],
   packing: INITIAL_PACKING,
+  packingGroups: PACKING_GROUPS,
   checklist: [
     { id: "c1", text: "12월 2일 점심 맛집", done: false },
     { id: "c2", text: "12월 2일 카페", done: false },

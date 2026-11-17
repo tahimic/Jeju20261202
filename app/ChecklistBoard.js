@@ -17,12 +17,16 @@ export default function ChecklistBoard({
   onReorder,
   onAdd,
   onUncheckAll,
+  onGroupAdd,
+  onGroupEdit,
+  onGroupDelete,
 }) {
   const [editMode, setEditMode] = useState(false);
   const [drag, setDrag] = useState(null); // { id, x, y, offX, offY, width, item }
   const [order, setOrder] = useState(null); // 끄는 동안의 임시 순서
   const [text, setText] = useState("");
-  const [addGroup, setAddGroup] = useState(groups ? groups[0] : null);
+  const [addGroupRaw, setAddGroup] = useState(groups ? groups[0] : null);
+  const addGroup = groups ? (groups.includes(addGroupRaw) ? addGroupRaw : groups[0]) : null;
   const dragRef = useRef(null);
   const pointRef = useRef(null);
   const orderRef = useRef(null);
@@ -198,12 +202,17 @@ export default function ChecklistBoard({
         return (
           <div key={g ?? "all"} className="pack-group" data-group={g ?? undefined}>
             {groups && (
-              <h3>
-                {g}{" "}
-                <small className={sub.length && d === sub.length ? "all" : ""}>
-                  {d}/{sub.length}
-                </small>
-              </h3>
+              <div className="group-head">
+                <h3>
+                  {g}{" "}
+                  <small className={sub.length && d === sub.length ? "all" : ""}>
+                    {d}/{sub.length}
+                  </small>
+                </h3>
+                {editMode && onGroupEdit && (
+                  <MoreMenu onEdit={() => onGroupEdit(g)} onDelete={() => onGroupDelete(g)} />
+                )}
+              </div>
             )}
             <ul className="todos">
               {sub.map(renderItem)}
@@ -212,6 +221,12 @@ export default function ChecklistBoard({
           </div>
         );
       })}
+
+      {editMode && onGroupAdd && (
+        <button className="btn ghost full add-group" onClick={onGroupAdd}>
+          + 분류 추가
+        </button>
+      )}
 
       {drag && (
         <div
@@ -236,7 +251,7 @@ export default function ChecklistBoard({
           setText("");
         }}
       >
-        {groups && (
+        {groups && groups.length > 0 && (
           <select value={addGroup} onChange={(e) => setAddGroup(e.target.value)}>
             {groups.map((g) => (
               <option key={g}>{g}</option>
