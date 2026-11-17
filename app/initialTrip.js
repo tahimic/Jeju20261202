@@ -52,6 +52,13 @@ export const INITIAL_PACKING = [
   { id: "p44", group: "🧴 세면·기타", text: "카메라", done: false },
 ];
 
+export const INITIAL_BUDGET = {
+  total: 0,
+  items: [
+    { id: "b1", title: "숙소 바비큐", amount: 30000, category: "food", when: 1, paid: false, memo: "사전 예약 필수" },
+  ],
+};
+
 export const INITIAL_TRIP = {
   title: "제주 애월 2박 3일",
   startDate: "2026-12-02",
@@ -164,6 +171,7 @@ export const INITIAL_TRIP = {
   ],
   packing: INITIAL_PACKING,
   packingGroups: PACKING_GROUPS,
+  budget: INITIAL_BUDGET,
   checklist: [
     { id: "c1", text: "12월 2일 점심 맛집", done: false },
     { id: "c2", text: "12월 2일 카페", done: false },

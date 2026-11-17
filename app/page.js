@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { INITIAL_TRIP, INITIAL_PACKING, PACKING_GROUPS } from "./initialTrip";
+import { INITIAL_TRIP, INITIAL_PACKING, PACKING_GROUPS, INITIAL_BUDGET } from "./initialTrip";
+import Sheet from "./Sheet";
+import BudgetView from "./Budget";
 import ChecklistBoard from "./ChecklistBoard";
 import MoreMenu, { ChevronIcon } from "./MoreMenu";
+import { PhotoStrip, Lightbox, PhotoEditor, deleteImages } from "./Photos";
 
 const LOCAL_KEY = "trip-planner:local";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -35,6 +38,7 @@ function withPacking(t) {
   if (!t) return t;
   let next = t;
   if (!Array.isArray(next.packing)) next = { ...next, packing: structuredClone(INITIAL_PACKING) };
+  if (!next.budget) next = { ...next, budget: structuredClone(INITIAL_BUDGET) };
   if (!Array.isArray(next.packingGroups)) {
     next = { ...next, packingGroups: [...new Set([...PACKING_GROUPS, ...next.packing.map((p) => p.group).filter(Boolean)])] };
   }
@@ -42,7 +46,7 @@ function withPacking(t) {
 }
 
 function emptyTrip() {
-  return { title: "우리 여행", startDate: todayStr(), days: [{ id: uid(), note: "", items: [] }], info: [], checklist: [], packing: [], packingGroups: [] };
+  return { title: "우리 여행", startDate: todayStr(), days: [{ id: uid(), note: "", items: [] }], info: [], checklist: [], packing: [], packingGroups: [], budget: { total: 0, items: [] } };
 }
 
 function Linkify({ text }) {
@@ -88,6 +92,7 @@ export default function Page() {
   const [packText, setPackText] = useState("");
   const [packGroup, setPackGroup] = useState(PACKING_GROUPS[0]);
   const [listEdit, setListEdit] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // { images, index }
   const [groupEdit, setGroupEdit] = useState(null); // { mode: "add" | "rename", old, name }
   const [expanded, setExpanded] = useState(() => new Set());
   const toggleExpand = (id) =>
@@ -251,7 +256,10 @@ export default function Page() {
   };
 
   const deleteInfo = (id) => {
-    if (!confirm("이 카드를 삭제할까요?")) return;
+    const card = (trip.info || []).find((x) => x.id === id);
+    const n = card?.images?.length || 0;
+    if (!confirm(n ? `이 카드와 사진 ${n}장을 삭제할까요?` : "이 카드를 삭제할까요?")) return;
+    if (n) deleteImages(card.images);
     update((t) => {
       t.info = (t.info || []).filter((x) => x.id !== id);
       return t;
@@ -313,13 +321,36 @@ export default function Page() {
         <button className={view === "info" ? "on" : ""} onClick={() => setView("info")}>
           🎫 예약
         </button>
+        <button className={view === "budget" ? "on" : ""} onClick={() => setView("budget")}>
+          💰 예산
+        </button>
         <button className={view === "todo" ? "on" : ""} onClick={() => setView("todo")}>
-          ✅ 할 일 {checklist.length > 0 && <small>{doneCount}/{checklist.length}</small>}
+          ✅ 할 일
         </button>
         <button className={view === "pack" ? "on" : ""} onClick={() => setView("pack")}>
-          🎒 준비물 {packing.length > 0 && <small>{packDone}/{packing.length}</small>}
+          🎒 준비물
         </button>
       </div>
+
+      {view === "budget" && (
+        <BudgetView
+          budget={trip.budget || { total: 0, items: [] }}
+          dayCount={days.length}
+          dayLabel={(i) => `Day ${i + 1} · ${fmtDate(dayDate(trip.startDate, i))}`}
+          defaultWhen={(() => {
+            const today = todayStr();
+            if (!trip.startDate || today < trip.startDate) return "pre";
+            const diff = Math.round((new Date(today) - new Date(trip.startDate)) / 86400000);
+            return Math.min(diff, days.length - 1);
+          })()}
+          onChange={(fn) =>
+            update((t) => {
+              t.budget = fn(t.budget || { total: 0, items: [] });
+              return t;
+            })
+          }
+        />
+      )}
 
       {view === "pack" && (
         <ChecklistBoard
@@ -397,9 +428,12 @@ export default function Page() {
                 <h3>{c.title}</h3>
                 <MoreMenu onEdit={() => setInfoEdit(c)} onDelete={() => deleteInfo(c.id)} />
               </div>
-              <p>
-                <Linkify text={c.body} />
-              </p>
+              {c.body && (
+                <p>
+                  <Linkify text={c.body} />
+                </p>
+              )}
+              <PhotoStrip images={c.images} onOpen={(i) => setLightbox({ images: c.images, index: i })} />
             </div>
           ))}
           <button className="btn ghost full" onClick={() => setInfoEdit({ id: uid(), title: "", body: "", isNew: true })}>
@@ -588,6 +622,8 @@ export default function Page() {
           onClose={() => setInfoEdit(null)}
           onSave={(c) => {
             const { isNew, ...card } = c;
+            const before = (trip.info || []).find((x) => x.id === card.id)?.images || [];
+            deleteImages(before.filter((id) => !(card.images || []).includes(id)));
             update((t) => {
               t.info = t.info || [];
               const i = t.info.findIndex((x) => x.id === card.id);
@@ -600,6 +636,8 @@ export default function Page() {
           onDelete={() => deleteInfo(infoEdit.id)}
         />
       )}
+
+      {lightbox && <Lightbox images={lightbox.images} index={lightbox.index} onClose={() => setLightbox(null)} />}
 
       {groupEdit && (
         <GroupSheet
@@ -652,22 +690,6 @@ export default function Page() {
         />
       )}
     </main>
-  );
-}
-
-function Sheet({ title, onClose, children }) {
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-head">
-          <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="닫기">
-            ✕
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }
 
@@ -770,24 +792,43 @@ function ListItemSheet({ initial, groups, title, onClose, onSave, onDelete }) {
 }
 
 function InfoSheet({ initial, onClose, onSave, onDelete }) {
-  const [f, setF] = useState(initial);
+  const [f, setF] = useState({ ...initial, images: initial.images || [] });
+  const added = useRef([]); // 이번에 새로 올린 사진 (저장 안 하고 닫으면 지워요)
+  const close = () => {
+    deleteImages(added.current);
+    onClose();
+  };
   return (
-    <Sheet title={initial.isNew ? "정보 카드 추가" : "정보 카드 수정"} onClose={onClose}>
+    <Sheet title={initial.isNew ? "정보 카드 추가" : "정보 카드 수정"} onClose={close}>
       <label>
         제목
         <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="예: ✈️ 항공권" />
       </label>
       <label>
         내용
-        <textarea value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} rows={10} />
+        <textarea value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} rows={8} />
       </label>
+      <PhotoEditor
+        images={f.images}
+        onAdd={(id) => {
+          added.current.push(id);
+          setF((prev) => ({ ...prev, images: [...prev.images, id] }));
+        }}
+        onRemove={(id) => setF((prev) => ({ ...prev, images: prev.images.filter((x) => x !== id) }))}
+      />
       <div className="actions">
         {!initial.isNew && (
           <button className="btn ghost danger" onClick={onDelete}>
             삭제
           </button>
         )}
-        <button className="btn primary" onClick={() => onSave(f)}>
+        <button
+          className="btn primary"
+          onClick={() => {
+            deleteImages(added.current.filter((id) => !f.images.includes(id)));
+            onSave(f);
+          }}
+        >
           저장
         </button>
       </div>
