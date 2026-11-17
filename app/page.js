@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { INITIAL_TRIP, INITIAL_PACKING, PACKING_GROUPS, INITIAL_BUDGET } from "./initialTrip";
 import Sheet from "./Sheet";
-import BudgetView from "./Budget";
+import BudgetView, { MoneyInput, BUDGET_CATS, won } from "./Budget";
+import { migrateLinks, derivedExpenses, guessInfoCat } from "./links";
 import ChecklistBoard from "./ChecklistBoard";
 import MoreMenu, { ChevronIcon } from "./MoreMenu";
 import { PhotoStrip, Lightbox, PhotoEditor, deleteImages } from "./Photos";
@@ -28,7 +29,7 @@ function todayStr() {
 }
 
 function newTrip() {
-  return structuredClone(INITIAL_TRIP);
+  return withPacking(structuredClone(INITIAL_TRIP));
 }
 
 // 준비물 목록이 생기기 전에 저장된 데이터에는 기본 준비물을 채워 넣어요.
@@ -42,11 +43,11 @@ function withPacking(t) {
   if (!Array.isArray(next.packingGroups)) {
     next = { ...next, packingGroups: [...new Set([...PACKING_GROUPS, ...next.packing.map((p) => p.group).filter(Boolean)])] };
   }
-  return next;
+  return migrateLinks(next);
 }
 
 function emptyTrip() {
-  return { title: "우리 여행", startDate: todayStr(), days: [{ id: uid(), note: "", items: [] }], info: [], checklist: [], packing: [], packingGroups: [], budget: { total: 0, items: [] } };
+  return { title: "우리 여행", startDate: todayStr(), days: [{ id: uid(), note: "", items: [] }], info: [], checklist: [], packing: [], packingGroups: [], budget: { total: 0, items: [] }, linkedV1: true };
 }
 
 function Linkify({ text }) {
@@ -93,6 +94,19 @@ export default function Page() {
   const [packGroup, setPackGroup] = useState(PACKING_GROUPS[0]);
   const [listEdit, setListEdit] = useState(null);
   const [lightbox, setLightbox] = useState(null); // { images, index }
+  const pendingScroll = useRef(null);
+  useEffect(() => {
+    const id = pendingScroll.current;
+    if (!id) return;
+    pendingScroll.current = null;
+    requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("flash");
+      setTimeout(() => el.classList.remove("flash"), 1600);
+    });
+  });
   const [groupEdit, setGroupEdit] = useState(null); // { mode: "add" | "rename", old, name }
   const [expanded, setExpanded] = useState(() => new Set());
   const toggleExpand = (id) =>
@@ -235,9 +249,30 @@ export default function Page() {
   const start = dayDate(trip.startDate, 0);
   const end = dayDate(trip.startDate, days.length - 1);
 
+  // 탭 사이 이동: 해당 일정/예약 카드로 스크롤하고 잠깐 강조
+  const goToPlanItem = (itemId) => {
+    const di = trip.days.findIndex((d) => d.items.some((x) => x.id === itemId));
+    if (di < 0) return;
+    setView("plan");
+    setDayIdx(di);
+    setExpanded((prev) => new Set(prev).add(itemId));
+    pendingScroll.current = "item-" + itemId;
+  };
+  const goToInfo = (cardId) => {
+    setView("info");
+    pendingScroll.current = "info-" + cardId;
+  };
+  const findPlanItem = (id) => {
+    for (const d of trip.days) {
+      const it = d.items.find((x) => x.id === id);
+      if (it) return it;
+    }
+    return null;
+  };
+
   const saveItem = (item) => {
     update((t) => {
-      const d = t.days[safeIdx];
+      const d = t.days.find((x) => x.items.some((y) => y.id === item.id)) || t.days[safeIdx];
       const i = d.items.findIndex((x) => x.id === item.id);
       if (i >= 0) d.items[i] = item;
       else d.items.push(item);
@@ -249,7 +284,7 @@ export default function Page() {
   const deleteItem = (id) => {
     if (!confirm("이 일정을 삭제할까요?")) return;
     update((t) => {
-      t.days[safeIdx].items = t.days[safeIdx].items.filter((x) => x.id !== id);
+      t.days.forEach((d) => (d.items = d.items.filter((x) => x.id !== id)));
       return t;
     });
     setEditing(null);
@@ -335,6 +370,29 @@ export default function Page() {
       {view === "budget" && (
         <BudgetView
           budget={trip.budget || { total: 0, items: [] }}
+          derived={derivedExpenses(trip)}
+          onGoSource={(x) => (x.source === "plan" ? goToPlanItem(x.refId) : goToInfo(x.refId))}
+          onEditSource={(x) => {
+            if (x.source === "plan") {
+              const it = findPlanItem(x.refId);
+              if (it) setEditing({ item: it });
+            } else {
+              const c = info.find((y) => y.id === x.refId);
+              if (c) setInfoEdit(c);
+            }
+          }}
+          onClearSource={(x) => {
+            const where = x.source === "plan" ? "일정" : "예약 카드";
+            if (!confirm(`예산에서 빼려면 ${where}의 금액을 지워요. 지울까요?`)) return;
+            update((t) => {
+              if (x.source === "plan") {
+                t.days.forEach((d) => d.items.forEach((y) => y.id === x.refId && (y.amount = 0)));
+              } else {
+                t.info.forEach((y) => y.id === x.refId && (y.amount = 0));
+              }
+              return t;
+            });
+          }}
           dayCount={days.length}
           dayLabel={(i) => `Day ${i + 1} · ${fmtDate(dayDate(trip.startDate, i))}`}
           defaultWhen={(() => {
@@ -423,7 +481,7 @@ export default function Page() {
       {view === "info" && (
         <section>
           {info.map((c) => (
-            <div key={c.id} className="info-card" onClick={() => setInfoEdit(c)}>
+            <div key={c.id} id={"info-" + c.id} className="info-card" onClick={() => setInfoEdit(c)}>
               <div className="card-top">
                 <h3>{c.title}</h3>
                 <MoreMenu onEdit={() => setInfoEdit(c)} onDelete={() => deleteInfo(c.id)} />
@@ -434,6 +492,36 @@ export default function Page() {
                 </p>
               )}
               <PhotoStrip images={c.images} onOpen={(i) => setLightbox({ images: c.images, index: i })} />
+              {c.amount > 0 && (
+                <div className="info-amt">
+                  💰 {won(c.amount)} <em className={c.paid !== false ? "paid-tag" : "plan-tag"}>{c.paid !== false ? "결제 완료" : "예정"}</em>
+                  <small>예산에 반영됨</small>
+                </div>
+              )}
+              {(() => {
+                const linked = days.flatMap((d, di) =>
+                  d.items.filter((x) => x.infoId === c.id).map((x) => ({ ...x, di }))
+                );
+                if (!linked.length) return null;
+                return (
+                  <div className="linked-plans">
+                    {linked
+                      .sort((a, b) => a.di - b.di || (a.time || "").localeCompare(b.time || ""))
+                      .map((x) => (
+                        <button
+                          key={x.id}
+                          className="plan-chip"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            goToPlanItem(x.id);
+                          }}
+                        >
+                          📅 Day {x.di + 1} {x.time} {x.title}
+                        </button>
+                      ))}
+                  </div>
+                );
+              })()}
             </div>
           ))}
           <button className="btn ghost full" onClick={() => setInfoEdit({ id: uid(), title: "", body: "", isNew: true })}>
@@ -519,10 +607,11 @@ export default function Page() {
         <ol className="timeline">
           {items.map((it) => {
             const c = catOf(it.category);
-            const hasDetail = !!(it.place || it.memo || it.cost || it.link);
+            const card = it.infoId ? info.find((x) => x.id === it.infoId) : null;
+            const hasDetail = !!(it.place || it.memo || it.link || it.amount > 0 || card);
             const open = expanded.has(it.id);
             return (
-              <li key={it.id} className="item">
+              <li key={it.id} className="item" id={"item-" + it.id}>
                 <div className="time">{it.time || "—"}</div>
                 <div className="dot">{c.icon}</div>
                 <div
@@ -550,14 +639,35 @@ export default function Page() {
                         </a>
                       )}
                       {it.memo && <p className="memo">{it.memo}</p>}
-                      {(it.cost || it.link) && (
+                      {(it.amount > 0 || it.link) && (
                         <div className="meta">
-                          {it.cost && <span>💰 {it.cost}</span>}
+                          {it.amount > 0 && (
+                            <span>
+                              💰 {won(it.amount)} <em className={it.paid ? "paid-tag" : "plan-tag"}>{it.paid ? "결제 완료" : "예정"}</em>
+                            </span>
+                          )}
                           {it.link && (
                             <a href={it.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
                               🔗 링크
                             </a>
                           )}
+                        </div>
+                      )}
+                      {card && (
+                        <div className="linked-info">
+                          <div className="li-head">
+                            <span>{card.title}</span>
+                            <button
+                              className="li-go"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                goToInfo(card.id);
+                              }}
+                            >
+                              예약 정보 보기 ›
+                            </button>
+                          </div>
+                          <PhotoStrip images={card.images} onOpen={(i) => setLightbox({ images: card.images, index: i })} />
                         </div>
                       )}
                     </div>
@@ -582,6 +692,7 @@ export default function Page() {
 
       {editing && (
         <ItemSheet
+          infoCards={info}
           initial={editing.item}
           isNew={editing.isNew}
           onClose={() => setEditing(null)}
@@ -693,7 +804,7 @@ export default function Page() {
   );
 }
 
-function ItemSheet({ initial, isNew, onClose, onSave, onDelete }) {
+function ItemSheet({ initial, isNew, infoCards, onClose, onSave, onDelete }) {
   const [f, setF] = useState(initial);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
@@ -728,15 +839,36 @@ function ItemSheet({ initial, isNew, onClose, onSave, onDelete }) {
         메모
         <textarea value={f.memo} onChange={set("memo")} rows={3} placeholder="예약번호, 준비물, 주의사항 등" />
       </label>
-      <div className="row">
-        <label>
-          비용
-          <input value={f.cost || ""} onChange={set("cost")} placeholder="예: 2인 30,000원" />
-        </label>
-        <label>
-          링크
-          <input value={f.link || ""} onChange={set("link")} placeholder="https://" inputMode="url" />
-        </label>
+      <label>
+        링크
+        <input value={f.link || ""} onChange={set("link")} placeholder="https://" inputMode="url" />
+      </label>
+
+      <div className="link-box">
+        <div className="lb-title">💰 금액 <small>입력하면 예산에 자동으로 들어가요</small></div>
+        <MoneyInput value={f.amount || 0} onChange={(v) => setF({ ...f, amount: v })} placeholder="0" />
+        {f.amount > 0 && (
+          <div className="seg" style={{ marginTop: 8 }}>
+            <button type="button" className={f.paid ? "on" : ""} onClick={() => setF({ ...f, paid: true })}>
+              결제 완료
+            </button>
+            <button type="button" className={!f.paid ? "on" : ""} onClick={() => setF({ ...f, paid: false })}>
+              예정
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="link-box">
+        <div className="lb-title">🎫 예약 연결 <small>펼치면 예약 사진·정보가 같이 보여요</small></div>
+        <select className="field" value={f.infoId || ""} onChange={(e) => setF({ ...f, infoId: e.target.value || undefined })}>
+          <option value="">연결 안 함</option>
+          {infoCards.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title || "(제목 없음)"}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="actions">
         {!isNew && (
@@ -792,7 +924,7 @@ function ListItemSheet({ initial, groups, title, onClose, onSave, onDelete }) {
 }
 
 function InfoSheet({ initial, onClose, onSave, onDelete }) {
-  const [f, setF] = useState({ ...initial, images: initial.images || [] });
+  const [f, setF] = useState({ ...initial, images: initial.images || [], paid: initial.paid !== false });
   const added = useRef([]); // 이번에 새로 올린 사진 (저장 안 하고 닫으면 지워요)
   const close = () => {
     deleteImages(added.current);
@@ -808,6 +940,37 @@ function InfoSheet({ initial, onClose, onSave, onDelete }) {
         내용
         <textarea value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} rows={8} />
       </label>
+      <div className="link-box">
+        <div className="lb-title">💰 결제 금액 <small>입력하면 예산 &lsquo;여행 전&rsquo;에 자동으로 들어가요</small></div>
+        <MoneyInput value={f.amount || 0} onChange={(v) => setF({ ...f, amount: v })} placeholder="0" />
+        {f.amount > 0 && (
+          <>
+            <div className="seg" style={{ marginTop: 8 }}>
+              <button type="button" className={f.paid ? "on" : ""} onClick={() => setF({ ...f, paid: true })}>
+                결제 완료
+              </button>
+              <button type="button" className={!f.paid ? "on" : ""} onClick={() => setF({ ...f, paid: false })}>
+                예정
+              </button>
+            </div>
+            <div className="chips" style={{ marginTop: 8 }}>
+              {BUDGET_CATS.map((c) => {
+                const cur = f.budgetCat || guessInfoCat(f.title);
+                return (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className={cur === c.id ? "chip on" : "chip"}
+                    onClick={() => setF({ ...f, budgetCat: c.id })}
+                  >
+                    {c.icon} {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
       <PhotoEditor
         images={f.images}
         onAdd={(id) => {

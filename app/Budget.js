@@ -20,7 +20,7 @@ const catOf = (id) => BUDGET_CATS.find((c) => c.id === id) || BUDGET_CATS[BUDGET
 export const won = (n) => `${Math.round(Number(n) || 0).toLocaleString("ko-KR")}원`;
 const toNum = (s) => Number(String(s).replace(/[^\d]/g, "")) || 0;
 
-function MoneyInput({ value, onChange, placeholder, autoFocus }) {
+export function MoneyInput({ value, onChange, placeholder, autoFocus }) {
   return (
     <div className="money-input">
       <input
@@ -36,10 +36,11 @@ function MoneyInput({ value, onChange, placeholder, autoFocus }) {
 }
 
 // when: "pre"(여행 전) 또는 Day 순번(0, 1, 2…)
-export default function BudgetView({ budget, dayCount, dayLabel, defaultWhen, onChange }) {
+export default function BudgetView({ budget, derived = [], dayCount, dayLabel, defaultWhen, onChange, onGoSource, onEditSource, onClearSource }) {
   const [edit, setEdit] = useState(null); // { item, isNew }
   const [totalOpen, setTotalOpen] = useState(false);
-  const items = budget.items || [];
+  const manual = (budget.items || []).map((x) => ({ ...x, source: "manual" }));
+  const items = [...derived, ...manual];
   const total = budget.total || 0;
   const paid = items.filter((x) => x.paid).reduce((s, x) => s + (x.amount || 0), 0);
   const planned = items.filter((x) => !x.paid).reduce((s, x) => s + (x.amount || 0), 0);
@@ -72,7 +73,12 @@ export default function BudgetView({ budget, dayCount, dayLabel, defaultWhen, on
   // 언제별 묶음
   const whenKey = (x) => (x.when === "pre" || x.when == null ? "pre" : Math.min(Number(x.when), dayCount - 1));
   const sections = ["pre", ...Array.from({ length: dayCount }, (_, i) => i)]
-    .map((k) => ({ key: k, list: items.filter((x) => whenKey(x) === k) }))
+    .map((k) => ({
+      key: k,
+      list: items
+        .filter((x) => whenKey(x) === k)
+        .sort((a, b) => (a.source === "manual") - (b.source === "manual") || (a.time || "").localeCompare(b.time || "")),
+    }))
     .filter((s) => s.list.length > 0);
 
   const pct = (n) => (total > 0 ? Math.min(100, (n / total) * 100) : spent > 0 ? (n / spent) * 100 : 0);
@@ -146,9 +152,24 @@ export default function BudgetView({ budget, dayCount, dayLabel, defaultWhen, on
                       {!x.paid && <span className="chip-planned">예정</span>}
                     </div>
                     {x.memo && <div className="exp-memo">{x.memo}</div>}
+                    {x.source !== "manual" && (
+                      <button className="src-badge" onClick={() => onGoSource(x)}>
+                        {x.source === "plan" ? `📅 일정 · Day ${x.dayIndex + 1}${x.time ? " " + x.time : ""}` : "🎫 예약"} ›
+                      </button>
+                    )}
                   </div>
                   <span className={x.paid ? "exp-amt" : "exp-amt planned"}>{won(x.amount)}</span>
-                  <MoreMenu onEdit={() => setEdit({ item: x })} onDelete={() => remove(x.id)} />
+                  {x.source === "manual" ? (
+                    <MoreMenu
+                      onEdit={() => {
+                        const { source, ...item } = x;
+                        setEdit({ item });
+                      }}
+                      onDelete={() => remove(x.id)}
+                    />
+                  ) : (
+                    <MoreMenu onEdit={() => onEditSource(x)} onDelete={() => onClearSource(x)} />
+                  )}
                 </li>
               );
             })}

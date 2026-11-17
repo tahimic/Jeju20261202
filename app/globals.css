@@ -666,3 +666,30 @@ label.check-row input { width: 18px; height: 18px; margin: 0; accent-color: var(
 .budget { padding-bottom: 20px; }
 .bc-row { grid-template-columns: 104px 1fr 86px; }
 .bc-amt { text-align: right; }
+
+/* 연결 입력 상자 */
+.link-box { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fbfaf7; }
+.lb-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+.lb-title small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 4px; }
+.link-box .money-input { margin-top: 0; }
+.link-box .money-input input { font-size: 18px; padding: 10px 36px 10px 12px; }
+.link-box select.field { margin-top: 0; }
+
+/* 연결 표시 */
+.paid-tag, .plan-tag { font-style: normal; font-size: 11px; font-weight: 600; border-radius: 99px; padding: 1px 7px; margin-left: 2px; }
+.paid-tag { background: var(--accent); color: white; }
+.plan-tag { background: var(--accent-soft); color: var(--accent); }
+.linked-info { margin-top: 10px; padding: 10px; border-radius: 10px; background: #f3faf8; border: 1px solid #d5efe9; cursor: default; }
+.li-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
+.li-go { border: none; background: none; color: var(--accent); font-size: 13px; font-weight: 600; padding: 2px 0; white-space: nowrap; }
+.linked-info .photo-strip { margin-top: 8px; }
+.linked-info .thumb { width: 72px; height: 72px; }
+.info-amt { margin-top: 10px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.info-amt small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 4px; }
+.linked-plans { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.plan-chip { border: 1px solid var(--line); background: var(--bg); border-radius: 99px; padding: 5px 10px; font-size: 12px; color: var(--ink); }
+.src-badge { border: none; background: none; padding: 2px 0 0; font-size: 12px; color: var(--accent); font-weight: 600; text-align: left; }
+.flash { animation: flash 1.6s ease-out; border-radius: 14px; }
+@keyframes flash { 0%, 40% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+.item.flash { box-shadow: none; animation: none; }
+.item.flash .card { animation: flash 1.6s ease-out; }
