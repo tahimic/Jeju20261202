@@ -6,7 +6,7 @@ import Sheet from "./Sheet";
 import BudgetView, { MoneyInput, BUDGET_CATS, won } from "./Budget";
 import { migrateLinks, derivedExpenses, guessInfoCat } from "./links";
 import ChecklistBoard from "./ChecklistBoard";
-import MoreMenu, { ChevronIcon } from "./MoreMenu";
+import MoreMenu, { ChevronIcon, ImageIcon, LinkIcon } from "./MoreMenu";
 import { PhotoStrip, Lightbox, PhotoEditor, deleteImages } from "./Photos";
 
 const LOCAL_KEY = "trip-planner:local";
@@ -621,7 +621,34 @@ export default function Page() {
                   aria-expanded={hasDetail ? open : undefined}
                 >
                   <div className="card-top">
-                    <strong>{it.title || "(제목 없음)"}</strong>
+                    <span className="title-wrap">
+                      <strong>{it.title || "(제목 없음)"}</strong>
+                      {card?.images?.length > 0 && (
+                        <button
+                          className="mini-ico"
+                          aria-label={`사진 ${card.images.length}장 보기`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLightbox({ images: card.images, index: 0 });
+                          }}
+                        >
+                          <ImageIcon />
+                          {card.images.length > 1 && <small>{card.images.length}</small>}
+                        </button>
+                      )}
+                      {it.link && (
+                        <a
+                          className="mini-ico"
+                          href={it.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="링크 열기"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <LinkIcon />
+                        </a>
+                      )}
+                    </span>
                     <span className="card-tools">
                       {hasDetail && (
                         <span className="chev" aria-hidden="true">

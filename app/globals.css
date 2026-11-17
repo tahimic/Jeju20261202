@@ -693,3 +693,23 @@ label.check-row input { width: 18px; height: 18px; margin: 0; accent-color: var(
 @keyframes flash { 0%, 40% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
 .item.flash { box-shadow: none; animation: none; }
 .item.flash .card { animation: flash 1.6s ease-out; }
+
+/* 일정 제목 옆 사진·링크 아이콘 */
+.title-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; flex: 1; }
+.mini-ico {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: #faf9f6;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.mini-ico:active { background: var(--accent-soft); }
+.mini-ico small { font-size: 11px; }
