@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { INITIAL_TRIP, INITIAL_PACKING, PACKING_GROUPS } from "./initialTrip";
 import ChecklistBoard from "./ChecklistBoard";
-import MoreMenu from "./MoreMenu";
+import MoreMenu, { ChevronIcon } from "./MoreMenu";
 
 const LOCAL_KEY = "trip-planner:local";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -500,7 +500,11 @@ export default function Page() {
                   <div className="card-top">
                     <strong>{it.title || "(제목 없음)"}</strong>
                     <span className="card-tools">
-                      {hasDetail && <span className="chev" aria-hidden="true">⌄</span>}
+                      {hasDetail && (
+                        <span className="chev" aria-hidden="true">
+                          <ChevronIcon />
+                        </span>
+                      )}
                       <MoreMenu onEdit={() => setEditing({ item: it })} onDelete={() => deleteItem(it.id)} />
                     </span>
                   </div>

@@ -471,3 +471,23 @@ label.check-row input { width: 18px; height: 18px; margin: 0; accent-color: var(
 .group-head { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 6px; }
 .group-head h3 { margin: 0 !important; }
 .board .add-group { margin-top: 16px; }
+
+/* 펼침 화살표 아이콘 */
+.chev {
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--muted);
+  display: inline-grid;
+  place-items: center;
+  transition: transform 0.25s ease, background 0.2s, color 0.2s;
+}
+.card.open .chev {
+  transform: rotate(180deg);
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 0 !important;
+}
