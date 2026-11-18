@@ -831,12 +831,14 @@ export default function Page() {
   );
 }
 
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 function ItemSheet({ initial, isNew, infoCards, onClose, onSave, onDelete }) {
   const [f, setF] = useState(initial);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   return (
-    <Sheet title={isNew ? "일정 추가" : "일정 수정"} onClose={onClose}>
+    <Sheet title={isNew ? "일정 추가" : "일정 수정"} onClose={onClose} dirty={!same(f, initial)} onSave={() => onSave(f)}>
       <div className="chips">
         {CATEGORIES.map((c) => (
           <button
@@ -914,7 +916,7 @@ function ItemSheet({ initial, isNew, infoCards, onClose, onSave, onDelete }) {
 function ListItemSheet({ initial, groups, title, onClose, onSave, onDelete }) {
   const [f, setF] = useState(initial);
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet title={title} onClose={onClose} dirty={!same(f, initial)} onSave={() => onSave(f)}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -951,14 +953,19 @@ function ListItemSheet({ initial, groups, title, onClose, onSave, onDelete }) {
 }
 
 function InfoSheet({ initial, onClose, onSave, onDelete }) {
-  const [f, setF] = useState({ ...initial, images: initial.images || [], paid: initial.paid !== false });
+  const [init] = useState(() => ({ ...initial, images: initial.images || [], paid: initial.paid !== false }));
+  const [f, setF] = useState(init);
   const added = useRef([]); // 이번에 새로 올린 사진 (저장 안 하고 닫으면 지워요)
   const close = () => {
     deleteImages(added.current);
     onClose();
   };
+  const save = () => {
+    deleteImages(added.current.filter((id) => !f.images.includes(id)));
+    onSave(f);
+  };
   return (
-    <Sheet title={initial.isNew ? "정보 카드 추가" : "정보 카드 수정"} onClose={close}>
+    <Sheet title={initial.isNew ? "정보 카드 추가" : "정보 카드 수정"} onClose={close} dirty={!same(f, init)} onSave={save}>
       <label>
         제목
         <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="예: ✈️ 항공권" />
@@ -1012,13 +1019,7 @@ function InfoSheet({ initial, onClose, onSave, onDelete }) {
             삭제
           </button>
         )}
-        <button
-          className="btn primary"
-          onClick={() => {
-            deleteImages(added.current.filter((id) => !f.images.includes(id)));
-            onSave(f);
-          }}
-        >
+        <button className="btn primary" onClick={save}>
           저장
         </button>
       </div>
@@ -1029,7 +1030,12 @@ function InfoSheet({ initial, onClose, onSave, onDelete }) {
 function GroupSheet({ initial, onClose, onSave }) {
   const [name, setName] = useState(initial.name);
   return (
-    <Sheet title={initial.mode === "add" ? "분류 추가" : "분류 이름 수정"} onClose={onClose}>
+    <Sheet
+      title={initial.mode === "add" ? "분류 추가" : "분류 이름 수정"}
+      onClose={onClose}
+      dirty={name !== initial.name}
+      onSave={() => onSave(name)}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1053,7 +1059,12 @@ function SettingsSheet({ trip, onClose, onSave, onReset }) {
   const [title, setTitle] = useState(trip.title);
   const [startDate, setStartDate] = useState(trip.startDate);
   return (
-    <Sheet title="여행 설정" onClose={onClose}>
+    <Sheet
+      title="여행 설정"
+      onClose={onClose}
+      dirty={title !== trip.title || startDate !== trip.startDate}
+      onSave={() => onSave(title, startDate)}
+    >
       <label>
         여행 이름
         <input value={title} onChange={(e) => setTitle(e.target.value)} />

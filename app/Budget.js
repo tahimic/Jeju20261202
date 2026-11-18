@@ -236,7 +236,12 @@ export default function BudgetView({ budget, derived = [], dayCount, dayLabel, d
 function ExpenseSheet({ initial, isNew, dayCount, dayLabel, onClose, onSave, onDelete }) {
   const [f, setF] = useState(initial);
   return (
-    <Sheet title={isNew ? "지출 추가" : "지출 수정"} onClose={onClose}>
+    <Sheet
+      title={isNew ? "지출 추가" : "지출 수정"}
+      onClose={onClose}
+      dirty={JSON.stringify(f) !== JSON.stringify(initial)}
+      onSave={() => onSave(f)}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -309,7 +314,7 @@ function ExpenseSheet({ initial, isNew, dayCount, dayLabel, onClose, onSave, onD
 function TotalSheet({ value, onClose, onSave }) {
   const [v, setV] = useState(value || 0);
   return (
-    <Sheet title="총 예산" onClose={onClose}>
+    <Sheet title="총 예산" onClose={onClose} dirty={(v || 0) !== (value || 0)} onSave={() => onSave(v)}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
